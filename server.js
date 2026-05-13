@@ -6,18 +6,23 @@ const fs = require('fs');
 const os = require('os');
 
 const app = express();
-app.listen(PORT, '0.0.0.0', () => {
+const PORT = process.env.PORT || 3000;
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Check yt-dlp installed hai ya nahi
 function checkYtDlp(cb) {
   exec('yt-dlp --version', (err) => cb(!err));
 }
 
-// Video info fetch
+function formatDuration(sec) {
+  if (!sec) return '--:--';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 app.get('/info', (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'URL required' });
@@ -30,11 +35,7 @@ app.get('/info', (req, res) => {
         title: data.title,
         duration: formatDuration(data.duration),
         channel: data.uploader || data.channel,
-        thumbnail: data.thumbnail,
-        formats: (data.formats || [])
-          .filter(f => f.ext === 'mp4' || f.vcodec !== 'none')
-          .map(f => ({ format_id: f.format_id, quality: f.format_note || f.height + 'p', ext: f.ext }))
-          .filter((v, i, a) => a.findIndex(x => x.quality === v.quality) === i)
+        thumbnail: data.thumbnail
       });
     } catch (e) {
       res.status(500).json({ error: 'Parse error' });
@@ -42,7 +43,6 @@ app.get('/info', (req, res) => {
   });
 });
 
-// Download
 app.get('/download', (req, res) => {
   const { url, quality, format } = req.query;
   if (!url) return res.status(400).json({ error: 'URL required' });
@@ -55,43 +55,26 @@ app.get('/download', (req, res) => {
 
   if (format === 'mp3') {
     const bitrate = (quality || '192kbps').replace('kbps', '');
-    ytArgs = [
-      '-x', '--audio-format', 'mp3',
-      '--audio-quality', bitrate + 'K',
-      '-o', outTemplate,
-      '--no-playlist',
-      url
-    ];
+    ytArgs = ['-x', '--audio-format', 'mp3', '--audio-quality', bitrate + 'K', '-o', outTemplate, '--no-playlist', url];
   } else {
-    // mp4 or webm
     let fmtStr = 'bestvideo+bestaudio/best';
     if (quality && quality !== 'best') {
       const h = quality.replace('p', '');
       fmtStr = `bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`;
     }
     const ext = format === 'webm' ? 'webm' : 'mp4';
-    ytArgs = [
-      '-f', fmtStr,
-      '--merge-output-format', ext,
-      '-o', outTemplate,
-      '--no-playlist',
-      url
-    ];
+    ytArgs = ['-f', fmtStr, '--merge-output-format', ext, '-o', outTemplate, '--no-playlist', url];
   }
 
   const yt = spawn('yt-dlp', ytArgs);
   let errOutput = '';
-
   yt.stderr.on('data', d => { errOutput += d.toString(); });
   yt.stdout.on('data', () => {});
 
   yt.on('close', (code) => {
     if (code !== 0) {
-      console.error('yt-dlp error:', errOutput);
       return res.status(500).json({ error: 'Download failed: ' + errOutput.slice(0, 200) });
     }
-
-    // Find the output file
     const files = fs.readdirSync(tmpDir).filter(f => f.startsWith(`ytdrop_${safeId}`));
     if (!files.length) return res.status(500).json({ error: 'Output file not found' });
 
@@ -104,26 +87,15 @@ app.get('/download', (req, res) => {
 
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);
-    stream.on('end', () => {
-      fs.unlink(filePath, () => {});
-    });
-    stream.on('error', () => {
-      res.status(500).json({ error: 'File stream error' });
-    });
+    stream.on('end', () => { fs.unlink(filePath, () => {}); });
+    stream.on('error', () => { res.status(500).json({ error: 'Stream error' }); });
   });
 });
 
-function formatDuration(sec) {
-  if (!sec) return '--:--';
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n✅ YTDrop server running at http://localhost:${PORT}\n`);
   checkYtDlp(ok => {
-    if (ok) console.log('✅ yt-dlp found — ready to download!\n');
-    else console.log('❌ yt-dlp NOT found! Run: pip install yt-dlp\n');
+    if (ok) console.log('✅ yt-dlp found — ready!\n');
+    else console.log('❌ yt-dlp NOT found!\n');
   });
 });

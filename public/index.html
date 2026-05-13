@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YTDrop</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, sans-serif;
+    background: #0f0f0f;
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .box {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    margin-bottom: 24px;
+    color: #fff;
+  }
+  h1 span { color: #ff3333; }
+
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    padding: 12px 14px;
+    background: #1a1a1a;
+    border: 1px solid #2e2e2e;
+    border-radius: 8px;
+    color: #eee;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: #ff3333; }
+  input::placeholder { color: #555; }
+
+  button {
+    padding: 12px 18px;
+    background: #ff3333;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  button:hover { background: #e02020; }
+  button:disabled { background: #555; cursor: not-allowed; }
+
+  .section-label {
+    font-size: 0.72rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .tab {
+    padding: 8px 16px;
+    background: #1a1a1a;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    color: #888;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab.active { background: #ff33331a; border-color: #ff333355; color: #ff5555; }
+  .tab:hover:not(.active) { color: #ddd; }
+
+  .qualities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+  .q {
+    padding: 7px 14px;
+    background: #1a1a1a;
+    border: 1px solid #2e2e2e;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .q.active { background: #ff33331a; border-color: #ff333355; color: #ff5555; }
+  .q:hover:not(.active) { color: #ddd; }
+
+  /* Preview */
+  #preview {
+    display: none;
+    background: #1a1a1a;
+    border: 1px solid #2e2e2e;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+    gap: 12px;
+    align-items: center;
+  }
+  #preview.show { display: flex; }
+  #thumb {
+    width: 80px; height: 50px;
+    border-radius: 5px;
+    object-fit: cover;
+    background: #111;
+    flex-shrink: 0;
+  }
+  #vtitle { font-size: 0.85rem; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #vmeta { font-size: 0.75rem; color: #666; }
+
+  /* Status */
+  #status {
+    font-size: 0.82rem;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    display: none;
+  }
+  #status.show { display: block; }
+  #status.info { background: #1a2030; color: #6699ff; border: 1px solid #224; }
+  #status.error { background: #2a1010; color: #ff6666; border: 1px solid #422; }
+  #status.success { background: #102010; color: #66cc66; border: 1px solid #242; }
+
+  #dlBtn { width: 100%; margin-top: 4px; padding: 14px; font-size: 0.95rem; }
+
+  hr { border: none; border-top: 1px solid #1e1e1e; margin: 20px 0; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>YT<span>Drop</span> — YouTube Downloader</h1>
+
+  <!-- URL -->
+  <div class="section-label">YouTube URL</div>
+  <div class="row">
+    <input type="text" id="urlInput" placeholder="https://youtube.com/watch?v=...">
+    <button id="fetchBtn" onclick="fetchInfo()">Fetch</button>
+  </div>
+
+  <!-- Preview -->
+  <div id="preview">
+    <img id="thumb" src="" alt="">
+    <div style="min-width:0">
+      <div id="vtitle"></div>
+      <div id="vmeta"></div>
+    </div>
+  </div>
+
+  <!-- Format -->
+  <div class="section-label">Format</div>
+  <div class="tabs">
+    <div class="tab active" onclick="setTab(this,'mp4')">MP4 Video</div>
+    <div class="tab" onclick="setTab(this,'mp3')">MP3 Audio</div>
+    <div class="tab" onclick="setTab(this,'webm')">WebM</div>
+  </div>
+
+  <!-- Quality -->
+  <div class="section-label" id="qLabel">Quality</div>
+  <div class="qualities" id="qGrid"></div>
+
+  <div id="status"></div>
+
+  <button id="dlBtn" onclick="startDownload()">⬇ Download</button>
+</div>
+
+<script>
+  const API = 'http://localhost:3000';
+
+  const videoQualities = ['144p','240p','360p','480p','720p','1080p','1440p','2160p','best'];
+  const audioQualities = ['64kbps','128kbps','192kbps','256kbps','320kbps','best'];
+
+  let tab = 'mp4';
+  let quality = '720p';
+
+  function buildQGrid() {
+    const grid = document.getElementById('qGrid');
+    const list = tab === 'mp3' ? audioQualities : videoQualities;
+    const def = tab === 'mp3' ? '192kbps' : '720p';
+    quality = def;
+    grid.innerHTML = list.map(q =>
+      `<div class="q${q===def?' active':''}" onclick="setQ(this,'${q}')">${q}</div>`
+    ).join('');
+  }
+
+  function setTab(el, t) {
+    tab = t;
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    buildQGrid();
+  }
+
+  function setQ(el, q2) {
+    quality = q2;
+    document.querySelectorAll('.q').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  buildQGrid();
+
+  async function fetchInfo() {
+    const url = document.getElementById('urlInput').value.trim();
+    if (!url) return setStatus('URL daalo pehle', 'error');
+
+    const btn = document.getElementById('fetchBtn');
+    btn.disabled = true; btn.textContent = '...';
+    setStatus('Video info fetch ho rahi hai...', 'info');
+
+    try {
+      const res = await fetch(`${API}/info?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+
+      document.getElementById('vtitle').textContent = data.title;
+      document.getElementById('vmeta').textContent = data.duration + ' · ' + (data.channel || '');
+      document.getElementById('thumb').src = data.thumbnail;
+      document.getElementById('preview').classList.add('show');
+      setStatus('Ready to download!', 'success');
+    } catch(e) {
+      setStatus('Error: ' + e.message, 'error');
+    }
+
+    btn.disabled = false; btn.textContent = 'Fetch';
+  }
+
+  function startDownload() {
+    const url = document.getElementById('urlInput').value.trim();
+    if (!url) return setStatus('URL daalo pehle', 'error');
+
+    setStatus('Download shuru ho gayi... browser mein file save hogi', 'info');
+
+    const link = `${API}/download?url=${encodeURIComponent(url)}&quality=${quality}&format=${tab}`;
+    window.location.href = link;
+
+    setTimeout(() => setStatus('Agar download na ho toh page reload karo', 'info'), 5000);
+  }
+
+  function setStatus(msg, type) {
+    const s = document.getElementById('status');
+    s.textContent = msg;
+    s.className = 'status show ' + type;
+  }
+
+  document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') fetchInfo();
+  });
+</script>
+</body>
+</html>
